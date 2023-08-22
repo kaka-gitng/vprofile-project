@@ -21,8 +21,7 @@ pipeline {
         registryCredential = 'ecr:us-east-1:awscreds'
         appRegistry = '782434001163.dkr.ecr.us-east-1.amazonaws.com/vprofileappimg'
         vprofileRegistry = "https://782434001163.dkr.ecr.us-east-1.amazonaws.com/vprofileappimg"
-        cluster = "vprostaging"
-        service = "vproappstagesvc"
+        
     }
 
     stages {
@@ -120,11 +119,33 @@ pipeline {
         stage('Deploy to ECS Staging') {
             steps {
                 withAWS(credentials: 'awscreds', region: 'us-east-1') {
-                    sh 'aws ecs update-service --cluster ${cluster} --service ${service} --force-new-deployment'
+                    script {
+                    // Create ECS cluster
+                    sh "aws ecs create-cluster --cluster-name vprostaging2"
                 }
             }
         }
-
+        
+        stage('Deploy Image from ECR') {
+            steps {
+                script {
+                    // Register task definition
+                    sh """aws ecs register-task-definition --family vprofileapp-task \\
+                        --container-definitions '[{
+                            "name": "vprofileapp-container",
+                            "image": "782434001163.dkr.ecr.us-east-1.amazonaws.com/vprofileappimg:latest",
+                            "memory": 512,
+                            "cpu": 256,
+                            "essential": true
+                        }]'
+                    """
+                    
+                    // Create ECS service
+                    sh "aws ecs create-service --cluster vprostaging2 --service-name vprofileapp-service \\
+                        --task-definition vprofileapp-task --desired-count 1"
+                }
+            }
+        }
         
     }
 }
